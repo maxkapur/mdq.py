@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mdq"
+version = "0.1.0"
+dependencies = [
+    "fastembed ~= 0.7",
+    "sqlite-vec ~= 0.1",
+    "rich ~= 14.3",
+]
+requires-python = "~= 3.13"
+authors = [
+  {name = "Max Kapur", email = "git@maxkapur.com"},
+]
+maintainers = [
+  {name = "Max Kapur", email = "git@maxkapur.com"},
+]
+# description = ""
+readme = "README.md"
+license = "MIT"
+license-files = ["LICEN[CS]E.*"]
+
+[project.optional-dependencies]
+dev = [
+  "mypy",
+  "pytest",
+  "ruff",
+]
+
+[project.urls]
+Homepage = "https://github.com/maxkapur/mdq.py"
+Documentation = "https://github.com/maxkapur/mdq.py"
+Repository = "https://github.com/maxkapur/mdq.py.git"
+"Bug Tracker" = "https://github.com/maxkapur/mdq.py/issues"
+
+[project.scripts]
+mdq = "mdq:main"
+
+[tool.ruff.lint]
+extend-select = ["I"]
