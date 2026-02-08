@@ -24,49 +24,82 @@ def main():
 
     conn = initialize_db()
 
-    paths = flat_paths(options)
+    # Paths to all text files implied by command line arguments (after globbing
+    # directories)
+    all_text_file_paths = get_text_file_paths(options)
 
-    updated_paths = updated(paths, conn)
-    embed_docs = [path.read_text() for path, _, _ in updated_paths]
-
-    with console.status(f"Embed {len(embed_docs)} documents"):
-        embeddings = [e.astype(np.float32) for e in embed_model.embed(embed_docs)]
+    # Metadata for all text files *not* reflected in the documents table--either
+    # missing an entry for that path, or the mtime (and possibly hash) is out of
+    # date
+    updated_text_file_metadatas = get_outdated_paths(all_text_file_paths, conn)
 
     with conn:
         # Insert any new paths
         conn.executemany(
             "INSERT OR IGNORE INTO document(path, digest, mtime) VALUES (?, ?, ?)",
-            [(p.path_str, p.digest, p.mtime) for p in updated_paths],
+            [(p.path_str, p.digest, p.mtime) for p in updated_text_file_metadatas],
         )
         # Update all path digests
         conn.executemany(
             "UPDATE document SET digest=?, mtime=? WHERE path=?",
-            [(p.digest, p.mtime, p.path_str) for p in updated_paths],
+            [(p.digest, p.mtime, p.path_str) for p in updated_text_file_metadatas],
         )
 
+    # Subset of previous list: Just those for which the hash is absent from our
+    # embeddings table, and thus we need to compute a new embedding
+    need_embedding_metadatas = []
+    for metadata in updated_text_file_metadatas:
+        # See if a new embedding is needed (it could have had its timestamp
+        # updated but identical content, or it could have been updated to have
+        # its contents match those of an already-embedded document)
+        if (
+            conn.execute(
+                "SELECT digest FROM embedding WHERE digest = ?", [metadata.digest]
+            ).fetchone()
+            is not None
+        ):
+            continue
+
+        need_embedding_metadatas.append(metadata)
+
+    with console.status(f"Embed {len(need_embedding_metadatas)} documents"):
+        embed_docs = [
+            metadata.path.read_text() for metadata in need_embedding_metadatas
+        ]
+        embeddings = [e.astype(np.float32) for e in embed_model.embed(embed_docs)]
+    del embed_docs
+
+    with conn:
         conn.executemany(
             "INSERT INTO embedding(digest, vec) VALUES (?, ?)",
-            [(p.digest, vec) for p, vec in zip(updated_paths, embeddings)],
+            [
+                (metadata.digest, vec)
+                for metadata, vec in zip(
+                    need_embedding_metadatas, embeddings, strict=True
+                )
+            ],
         )
 
     query_embed = np.array(*embed_model.embed([options.query]), dtype=np.float32)
 
-    question_marks = ",".join("?" * len(paths))
-    print(
-        conn.execute(
-            f"""
-            SELECT path, distance
+    question_marks = ",".join("?" * len(all_text_file_paths))
+    results = conn.execute(
+        f"""
+            SELECT path
                 FROM document
                 JOIN embedding
                 ON document.digest = embedding.digest
-                WHERE document.path IN ({question_marks})
-                AND embedding.vec MATCH ?
-                AND k = ?
+                WHERE
+                    document.path IN ({question_marks})
+                    AND embedding.vec MATCH ?
+                    AND k = ?
                 ORDER BY distance
             """,
-            [str(p.absolute()) for p in paths] + [query_embed, options.n_matches],
-        ).fetchall()
-    )
+        [str(p.absolute()) for p in all_text_file_paths]
+        + [query_embed, options.n_matches],
+    ).fetchall()
+    for (metadata,) in results:
+        print(str(metadata))
 
 
 def get_options(args=None):
@@ -114,7 +147,7 @@ def initialize_db():
 
         conn.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS embedding USING vec0(
-                digest TEXT,
+                digest TEXT UNIQUE,
                 vec FLOAT[{embedding_size}]
             )
         """)
@@ -122,7 +155,7 @@ def initialize_db():
     return conn
 
 
-def flat_paths(options):
+def get_text_file_paths(options):
     """List giving each file path implied by the paths given in options."""
 
     def inner():
@@ -148,8 +181,14 @@ class DocumentMetadata(NamedTuple):
         return str(self.path.absolute())
 
 
-def updated(paths, conn):
-    """List of just the file paths that have been updated."""
+def get_outdated_paths(paths, conn):
+    """List of metadata for files that are outdated.
+
+    A file is outdated if it is either entirely absent from our documents table,
+    or the file's mtime has been updated since we last saw it.
+
+    An outdated file *may* need to be read and embedded.
+    """
 
     def inner():
         for path in paths:
@@ -162,7 +201,10 @@ def updated(paths, conn):
             if fetched := res.fetchone():
                 _, _, old_mtime = fetched
                 if new_mtime == old_mtime:
+                    # File hasn't changed since inclusion in the table, no
+                    # embedding needed
                     continue
+
             yield DocumentMetadata(path, digest(path), new_mtime)
 
     return list(inner())
