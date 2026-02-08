@@ -6,7 +6,8 @@ build-backend = "hatchling.build"
 name = "mdq"
 version = "0.1.0"
 dependencies = [
-    "fastembed ~= 0.7",
+    "fastembed-gpu ~= 0.7",
+    "platformdirs ~= 4.5",
     "sqlite-vec ~= 0.1",
     "rich ~= 14.3",
 ]
