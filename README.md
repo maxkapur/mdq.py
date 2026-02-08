@@ -23,10 +23,10 @@ mdq -q "sasquatch"
 echo "sasquatch" | mdq
 
 # Specify paths to search
-mdq -q "sasquatch" ~/notes/*.md ~/docs/*.md
+mdq -q "sasquatch" ./notes/*.md ./docs/*.md
 
 # Match only specific file extensions
-mdq -q "sasquatch" -e "txt" "tex" ~/notes 
+mdq -q "sasquatch" -e "txt" "tex" ./notes
 
 # Adjust the number of matches
 mdq -q "sasquatch" -k 20
