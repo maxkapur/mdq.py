@@ -30,6 +30,10 @@ mdq -q "sasquatch" -e "txt" "tex" -p ./notes
 
 # Adjust the number of matches
 mdq -q "sasquatch" -k 20
+
+# Create/enable a systemd user service to automatically embed and cache files in
+# current working directory after login
+mdq systemd
 ```
 
 ## Installation
