@@ -77,9 +77,33 @@ def test_globs(mock_directory):
         *mock_directory.glob("./notes/*.md"),
         *mock_directory.glob("./docs/*.md"),
     ]
-    res = subprocess.run(
-        cmd, cwd=mock_directory, text=True, capture_output=True, input="sasquatch"
+    res = subprocess.run(cmd, cwd=mock_directory, text=True, capture_output=True)
+
+    assert re.match(
+        """\
+.*/notes/sasquatch.md
+.*/docs/satron.md
+""",
+        res.stdout,
     )
+
+
+def test_exts(mock_directory):
+    cmd = ["mdq", "-q", "sasquatch", "-e", "txt", "tex", "-p", mock_directory]
+    res = subprocess.run(cmd, cwd=mock_directory, text=True, capture_output=True)
+
+    assert re.match(
+        """\
+.*/docs/village.txt
+.*/notes/more notes/senarathne.txt
+""",
+        res.stdout,
+    )
+
+
+def test_n_matches(mock_directory):
+    cmd = ["mdq", "-q", "sasquatch", "-k", "2"]
+    res = subprocess.run(cmd, cwd=mock_directory, text=True, capture_output=True)
 
     assert re.match(
         """\
