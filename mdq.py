@@ -90,16 +90,16 @@ def handle_query(options):
     question_marks = ",".join("?" * len(all_text_file_paths))
     results = conn.execute(
         f"""
-            SELECT path
-                FROM document
-                JOIN embedding
-                ON document.digest = embedding.digest
-                WHERE
-                    document.path IN ({question_marks})
-                    AND embedding.vec MATCH ?
-                    AND k = ?
-                ORDER BY distance
-            """,
+        SELECT path
+            FROM document
+            JOIN embedding
+            ON document.digest = embedding.digest
+            WHERE
+                document.path IN ({question_marks})
+                AND embedding.vec MATCH ?
+                AND k = ?
+            ORDER BY distance
+        """,
         [str(p.absolute()) for p in all_text_file_paths]
         + [query_embed, options.n_matches],
     ).fetchall()
