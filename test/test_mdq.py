@@ -33,10 +33,12 @@ def mock_directory(tmp_path_factory):
     return directory
 
 
-# Integration tests of the examples from the README
+# Integration tests of the examples from the README. Run tests twice to detect
+# cache invalidation issues.
 
 
-def test_basic(mock_directory):
+@pytest.mark.parametrize("rep", range(2))
+def test_basic(mock_directory, rep):
     cmd = ["mdq", "-q", "sasquatch"]
     res = subprocess.run(cmd, cwd=mock_directory, text=True, capture_output=True)
 
@@ -51,7 +53,8 @@ def test_basic(mock_directory):
     )
 
 
-def test_stdin(mock_directory):
+@pytest.mark.parametrize("rep", range(2))
+def test_stdin(mock_directory, rep):
     cmd = ["mdq"]
     res = subprocess.run(
         cmd, cwd=mock_directory, text=True, capture_output=True, input="sasquatch"
@@ -68,7 +71,8 @@ def test_stdin(mock_directory):
     )
 
 
-def test_globs(mock_directory):
+@pytest.mark.parametrize("rep", range(2))
+def test_globs(mock_directory, rep):
     cmd = [
         "mdq",
         "-q",
@@ -88,7 +92,8 @@ def test_globs(mock_directory):
     )
 
 
-def test_exts(mock_directory):
+@pytest.mark.parametrize("rep", range(2))
+def test_exts(mock_directory, rep):
     cmd = ["mdq", "-q", "sasquatch", "-e", "txt", "tex", "-p", mock_directory]
     res = subprocess.run(cmd, cwd=mock_directory, text=True, capture_output=True)
 
@@ -101,7 +106,8 @@ def test_exts(mock_directory):
     )
 
 
-def test_n_matches(mock_directory):
+@pytest.mark.parametrize("rep", range(2))
+def test_n_matches(mock_directory, rep):
     cmd = ["mdq", "-q", "sasquatch", "-k", "2"]
     res = subprocess.run(cmd, cwd=mock_directory, text=True, capture_output=True)
 
