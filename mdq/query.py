@@ -7,7 +7,7 @@ import numpy as np
 import sqlite_vec
 from fastembed import TextEmbedding
 from platformdirs import user_cache_path
-from rich import progress
+from rich.progress import Progress
 
 import mdq
 import mdq.file_utils
@@ -150,17 +150,16 @@ def refresh_embeddings_db(
     embed_model = TextEmbedding(
         options.embed_model, cache_dir=options.cache_dir / "text_embedding"
     )
-    for digest, doc in progress.track(
-        zip(unique_hashes, unique_docs, strict=True),
-        "Embed documents",
-        total=len(unique_hashes),
-    ):
-        vec = next(embed_model.embed([doc])).astype(np.float32)
+    with Progress(console=mdq.console) as progress:
+        task = progress.add_task("Embed documents", total=len(unique_hashes))
+        for digest, doc in zip(unique_hashes, unique_docs, strict=True):
+            vec = next(embed_model.embed([doc])).astype(np.float32)
 
-        with conn:
-            conn.execute(
-                "INSERT INTO embedding(digest, vec) VALUES (?, ?)", (digest, vec)
-            )
+            with conn:
+                conn.execute(
+                    "INSERT INTO embedding(digest, vec) VALUES (?, ?)", (digest, vec)
+                )
+            progress.advance(task)
 
     # Do this after computing embedding to prevent any document.digest from
     # having no match in the embedding table if program terminated during
