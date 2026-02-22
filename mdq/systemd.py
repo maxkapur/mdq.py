@@ -8,6 +8,8 @@ import mdq
 
 
 def handle(options: Namespace) -> None:
+    """Handle parsed command line options for the systemd subcommand."""
+
     if not Path("/run/systemd/system").exists():
         raise ValueError("Host appears not to use systemd")
 

@@ -6,7 +6,7 @@ from typing import NamedTuple
 
 
 def get_text_file_paths(options: Namespace) -> list[Path]:
-    """List giving each file path implied by the paths given in options."""
+    """Extract individual file paths from `options.paths` and `.extensions`."""
 
     def inner():
         for path in options.paths:
@@ -22,6 +22,8 @@ def get_text_file_paths(options: Namespace) -> list[Path]:
 
 
 class DocumentMetadata(NamedTuple):
+    """Container of data needed to check which files need new embeddings."""
+
     path: Path
     digest: str
     mtime: float
@@ -35,9 +37,11 @@ def get_outdated_paths(paths: list[Path], conn: Connection) -> list[DocumentMeta
     """List of metadata for files that are outdated.
 
     A file is outdated if it is either entirely absent from our documents table,
-    or the file's mtime has been updated since we last saw it.
+    or the file's `.mtime` has been updated since we last saw it.
 
-    An outdated file *may* need to be read and embedded.
+    All outdated files need to be read. Some, but not all, required computing a
+    new embedding. A new embedding is *not* required if the file was updated
+    such that its contents match something we've embedded before.
     """
 
     def inner():

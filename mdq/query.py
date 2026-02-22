@@ -11,6 +11,7 @@ import mdq.file_utils
 
 
 def handle(options: Namespace) -> None:
+    """Handle parsed command line options for query mode (no subcommand)."""
     query_str = options.query or sys.stdin.readline()
     options.query = mdq.query_prefix + query_str.strip()
 
@@ -28,6 +29,11 @@ def handle(options: Namespace) -> None:
 
 
 def initialize_db() -> sqlite3.Connection:
+    """Get a connection to the sqlite database.
+
+    Load the sqlite-vec extension. Create files and tables as needed.
+    """
+
     conn = sqlite3.connect(str(mdq.conn_path))
 
     conn.enable_load_extension(True)
@@ -68,6 +74,12 @@ def initialize_db() -> sqlite3.Connection:
 def refresh_embeddings_db(
     requested_paths: list[Path], conn: sqlite3.Connection
 ) -> None:
+    """Update the database to reflect the current state of all requested paths.
+
+    Update file hashes in the document table. For any unseen hashes, compute the
+    embeddings and add them to the embeddings table.
+    """
+
     # Metadata for all text files *not* reflected in the documents table--either
     # missing an entry for that path, or the mtime (and possibly hash) is out of
     # date
