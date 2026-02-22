@@ -146,8 +146,9 @@ def refresh_embeddings_db(
 def fetch_top_matches(
     paths: list[Path], conn: sqlite3.Connection, options: Namespace
 ) -> list[str]:
-    (query_embed,) = mdq.embed_model.embed([options.query])
-    query_embed_arr = np.array(query_embed, dtype=np.float32)
+    with mdq.console.status("Embedding query"):
+        (query_embed,) = mdq.embed_model.embed([options.query])
+        query_embed_arr = np.array(query_embed, dtype=np.float32)
 
     # Populate the temporary, in-memory table which joins only the paths
     # requested to their embeddings. This can't be done as a subquery because
@@ -170,15 +171,15 @@ def fetch_top_matches(
             [str(p.absolute()) for p in paths],
         )
 
-    res = conn.execute(
-        """
-        SELECT path
-            FROM mem.filtered
-            WHERE
-                vec MATCH ?
-                AND k = ?
-            ORDER BY distance
-        """,
-        [query_embed_arr, options.n_matches],
-    ).fetchall()
-    return [path_str for (path_str,) in res]
+        res = conn.execute(
+            """
+            SELECT path
+                FROM mem.filtered
+                WHERE
+                    vec MATCH ?
+                    AND k = ?
+                ORDER BY distance
+            """,
+            [query_embed_arr, options.n_matches],
+        ).fetchall()
+        return [path_str for (path_str,) in res]
