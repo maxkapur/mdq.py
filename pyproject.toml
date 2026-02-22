@@ -39,5 +39,12 @@ Repository = "https://github.com/maxkapur/mdq.py.git"
 [project.scripts]
 mdq = "mdq:main"
 
+[tool.mypy]
+modules = ["mdq"]
+
+[[tool.mypy.overrides]]
+module = ["sqlite_vec"]
+ignore_missing_imports = true
+
 [tool.ruff.lint]
 extend-select = ["I"]

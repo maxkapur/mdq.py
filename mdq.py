@@ -2,7 +2,7 @@ import shlex
 import sqlite3
 import subprocess
 import sys
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 from hashlib import file_digest
 from pathlib import Path
 from typing import NamedTuple
@@ -21,7 +21,7 @@ conn_path = user_cache_path("mdq", ensure_exists=True) / "cache.db"
 embed_model = TextEmbedding("BAAI/bge-small-en-v1.5")
 
 
-def main(args=None):
+def main(args: None | list[str] = None) -> None:
     """Command line entry point.
 
     Parse command line arguments and delegate to the appropriate handler.
@@ -50,13 +50,13 @@ def main(args=None):
     systemd_parser.add_argument(
         "-f", "--force", action="store_true", help="Override existing service file"
     )
-    systemd_parser.set_defaults(func=systemd_integrate)
+    systemd_parser.set_defaults(func=handle_systemd)
 
     options = parser.parse_args(args)
     options.func(options)
 
 
-def handle_query(options):
+def handle_query(options: Namespace) -> None:
     query_str = options.query or sys.stdin.readline()
     options.query = query_prefix + query_str.strip()
 
@@ -69,13 +69,51 @@ def handle_query(options):
     all_text_file_paths = get_text_file_paths(options)
     refresh_embeddings_db(all_text_file_paths, conn)
 
-    for (path_str,) in fetch_top_matches(
-        options.n_matches, options.query, all_text_file_paths, conn
-    ):
+    for path_str in fetch_top_matches(all_text_file_paths, conn, options):
         print(str(path_str))
 
 
-def refresh_embeddings_db(requested_paths, conn):
+def initialize_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(conn_path))
+
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)
+    conn.enable_load_extension(False)
+
+    with conn:
+        conn.execute("PRAGMA strict = ON")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS document(
+                path TEXT UNIQUE,
+                digest TEXT,
+                mtime FLOAT
+            )
+        """)
+
+        embedding_size = embed_model.get_embedding_size(embed_model.model_name)
+
+        conn.execute(f"""
+            CREATE VIRTUAL TABLE IF NOT EXISTS embedding USING vec0(
+                digest TEXT UNIQUE,
+                vec FLOAT[{embedding_size}]
+            )
+        """)
+
+        # Temp space to hold embeddings for just the paths requested
+        conn.execute("ATTACH DATABASE ':memory:' AS mem")
+        conn.execute(f"""
+            CREATE VIRTUAL TABLE mem.filtered USING vec0(
+                path TEXT UNIQUE,
+                vec FLOAT[{embedding_size}]
+            )
+        """)
+
+    return conn
+
+
+def refresh_embeddings_db(
+    requested_paths: list[Path], conn: sqlite3.Connection
+) -> None:
     # Metadata for all text files *not* reflected in the documents table--either
     # missing an entry for that path, or the mtime (and possibly hash) is out of
     # date
@@ -115,7 +153,6 @@ def refresh_embeddings_db(requested_paths, conn):
             metadata.path.read_text() for metadata in need_embedding_metadatas
         ]
         embeddings = [e.astype(np.float32) for e in embed_model.embed(embed_docs)]
-    del embed_docs
 
     with conn:
         conn.executemany(
@@ -129,8 +166,11 @@ def refresh_embeddings_db(requested_paths, conn):
         )
 
 
-def fetch_top_matches(paths, conn, options):
-    query_embed = np.array(*embed_model.embed([options.query]), dtype=np.float32)
+def fetch_top_matches(
+    paths: list[Path], conn: sqlite3.Connection, options: Namespace
+) -> list[str]:
+    (query_embed,) = embed_model.embed([options.query])
+    query_embed_arr = np.array(query_embed, dtype=np.float32)
 
     # Populate the temporary, in-memory table which joins only the paths
     # requested to their embeddings. This can't be done as a subquery because
@@ -153,7 +193,7 @@ def fetch_top_matches(paths, conn, options):
             [str(p.absolute()) for p in paths],
         )
 
-    return conn.execute(
+    res = conn.execute(
         """
         SELECT path
             FROM mem.filtered
@@ -162,49 +202,12 @@ def fetch_top_matches(paths, conn, options):
                 AND k = ?
             ORDER BY distance
         """,
-        [query_embed, options.n_matches],
+        [query_embed_arr, options.n_matches],
     ).fetchall()
+    return [path_str for (path_str,) in res]
 
 
-def initialize_db():
-    conn = sqlite3.connect(str(conn_path))
-
-    conn.enable_load_extension(True)
-    sqlite_vec.load(conn)
-    conn.enable_load_extension(False)
-
-    with conn:
-        conn.execute("PRAGMA strict = ON")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS document(
-                path TEXT UNIQUE,
-                digest TEXT,
-                mtime FLOAT
-            )
-        """)
-
-        embedding_size = embed_model.get_embedding_size(embed_model.model_name)
-
-        conn.execute(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS embedding USING vec0(
-                digest TEXT UNIQUE,
-                vec FLOAT[{embedding_size}]
-            )
-        """)
-
-        # Temp space to hold embeddings for just the paths requested
-        conn.execute("ATTACH DATABASE ':memory:' AS mem")
-        conn.execute(f"""
-            CREATE VIRTUAL TABLE mem.filtered USING vec0(
-                path TEXT UNIQUE,
-                vec FLOAT[{embedding_size}]
-            )
-        """)
-
-    return conn
-
-
-def get_text_file_paths(options):
+def get_text_file_paths(options: Namespace) -> list[Path]:
     """List giving each file path implied by the paths given in options."""
 
     def inner():
@@ -226,11 +229,13 @@ class DocumentMetadata(NamedTuple):
     mtime: float
 
     @property
-    def path_str(self):
+    def path_str(self) -> str:
         return str(self.path.absolute())
 
 
-def get_outdated_paths(paths, conn):
+def get_outdated_paths(
+    paths: list[Path], conn: sqlite3.Connection
+) -> list[DocumentMetadata]:
     """List of metadata for files that are outdated.
 
     A file is outdated if it is either entirely absent from our documents table,
@@ -259,12 +264,12 @@ def get_outdated_paths(paths, conn):
     return list(inner())
 
 
-def digest(path):
+def digest(path: Path) -> str:
     with path.open("rb") as f:
         return file_digest(f, "sha-256").hexdigest()
 
 
-def systemd_integrate(options):
+def handle_systemd(options: Namespace) -> None:
     if not Path("/run/systemd/system").exists():
         raise ValueError("Host appears not to use systemd")
 
@@ -277,7 +282,7 @@ def systemd_integrate(options):
 
         # Default setup: dummy query, k=0, default extensions in current (at
         # time of running `mdq systemd`) working directory
-        cmd = shlex.join(
+        exec_cmd = shlex.join(
             [sys.executable, "-m", "mdq", "-q", "dummy", "-k", "0"],
         )
         body = f"""\
@@ -289,7 +294,7 @@ Description=Run dummy mdq query to populate cache
 [Service]
 Type=oneshot
 WorkingDirectory={str(Path().absolute())}
-ExecStart={cmd}
+ExecStart={exec_cmd}
 
 [Install]
 WantedBy=default.target
