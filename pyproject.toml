@@ -40,7 +40,7 @@ Repository = "https://github.com/maxkapur/mdq.py.git"
 mdq = "mdq.__main__:main"
 
 [tool.mypy]
-files = ["mdq/**/*.py"]
+files = ["."]
 
 [[tool.mypy.overrides]]
 module = ["sqlite_vec"]
