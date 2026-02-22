@@ -117,22 +117,6 @@ def refresh_embeddings_db(
         requested_paths, conn
     )
 
-    # Single transaction to prevent any document.digests from having no match in
-    # the embedding table if program terminated during embeddings. TODO: enforce
-    # this with a primary key constraint instead; update embedding first, then
-    # documents.
-    with conn:
-        # Insert any new paths
-        conn.executemany(
-            "INSERT OR IGNORE INTO document(path, digest, mtime) VALUES (?, ?, ?)",
-            [(p.path_str, p.digest, p.mtime) for p in updated_text_file_metadatas],
-        )
-        # Update all path digests
-        conn.executemany(
-            "UPDATE document SET digest=?, mtime=? WHERE path=?",
-            [(p.digest, p.mtime, p.path_str) for p in updated_text_file_metadatas],
-        )
-
     # Subset of previous list: Just those for which the hash is absent from
     # our embeddings table, and thus we need to compute a new embedding
     need_embedding_metadatas = []
@@ -176,6 +160,21 @@ def refresh_embeddings_db(
             conn.execute(
                 "INSERT INTO embedding(digest, vec) VALUES (?, ?)", (digest, vec)
             )
+
+    # Do this after computing embedding to prevent any document.digest from
+    # having no match in the embedding table if program terminated during
+    # embedding step. TODO: enforce this with a primary key constraint instead.
+    with conn:
+        # Insert any new paths
+        conn.executemany(
+            "INSERT OR IGNORE INTO document(path, digest, mtime) VALUES (?, ?, ?)",
+            [(p.path_str, p.digest, p.mtime) for p in updated_text_file_metadatas],
+        )
+        # Update all path digests
+        conn.executemany(
+            "UPDATE document SET digest=?, mtime=? WHERE path=?",
+            [(p.digest, p.mtime, p.path_str) for p in updated_text_file_metadatas],
+        )
 
 
 def fetch_top_matches(
