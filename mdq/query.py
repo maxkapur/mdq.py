@@ -147,23 +147,26 @@ def refresh_embeddings_db(
         unique_hashes.append(metadata.digest)
         unique_docs.append(metadata.path.read_text())
 
-    embed_model = TextEmbedding(
-        options.embed_model, cache_dir=options.cache_dir / "text_embedding"
-    )
-    with Progress(console=mdq.console) as progress:
-        task = progress.add_task("Embed documents", total=len(unique_hashes))
-        for digest, doc in zip(unique_hashes, unique_docs, strict=True):
-            vec = next(embed_model.embed([doc])).astype(np.float32)
+    # Compute new embeddings as needed
+    if unique_hashes:
+        embed_model = TextEmbedding(
+            options.embed_model, cache_dir=options.cache_dir / "text_embedding"
+        )
+        with Progress(console=mdq.console) as progress:
+            task = progress.add_task("Embed documents", total=len(unique_hashes))
+            for digest, doc in zip(unique_hashes, unique_docs, strict=True):
+                vec = next(embed_model.embed([doc])).astype(np.float32)
 
-            with conn:
-                conn.execute(
-                    "INSERT INTO embedding(digest, vec) VALUES (?, ?)", (digest, vec)
-                )
-            progress.advance(task)
+                with conn:
+                    conn.execute(
+                        "INSERT INTO embedding(digest, vec) VALUES (?, ?)",
+                        (digest, vec),
+                    )
+                progress.advance(task)
 
-    # Do this after computing embedding to prevent any document.digest from
-    # having no match in the embedding table if program terminated during
-    # embedding step. TODO: enforce this with a primary key constraint instead.
+    # Update documents table with current digests. Do this after computing
+    # embedding to prevent any document.digest from having no match in the
+    # embedding table if program terminated during embedding step.
     with conn:
         # Insert any new paths
         conn.executemany(
