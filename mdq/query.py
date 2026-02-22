@@ -3,13 +3,12 @@ import sys
 from argparse import Namespace
 from pathlib import Path
 
-import numpy as np
 import sqlite_vec
-from fastembed import TextEmbedding
 from platformdirs import user_cache_path
 from rich.progress import Progress
 
 import mdq
+import mdq.embed_utils
 import mdq.file_utils
 
 
@@ -26,15 +25,22 @@ def handle(options: Namespace) -> None:
         options.cache_dir = user_cache_path("mdq", ensure_exists=True)
 
     options.extensions = set("." + e.lstrip(".") for e in options.extensions)
+    embedder = mdq.embed_utils.LazyEmbedder(
+        {
+            "model_name": options.model_name,
+            "cache_dir": options.cache_dir / "text_embedding",
+        }
+    )
 
     conn = initialize_db(options)
 
     # Paths to all text files implied by command line arguments (after globbing
     # directories)
     all_text_file_paths = mdq.file_utils.get_text_file_paths(options)
-    refresh_embeddings_db(all_text_file_paths, conn, options)
 
-    for path_str in fetch_top_matches(all_text_file_paths, conn, options):
+    refresh_embeddings_db(all_text_file_paths, embedder, conn, options)
+
+    for path_str in fetch_top_matches(all_text_file_paths, embedder, conn, options):
         print(str(path_str))
 
 
@@ -96,14 +102,14 @@ def get_embedding_size(conn: sqlite3.Connection, options: Namespace) -> int:
         sqlite3.OperationalError,  # table doesn't exist
         TypeError,  # table exists but has no rows
     ):
-        embed_model = TextEmbedding(
-            options.embed_model, cache_dir=options.cache_dir / "text_embedding"
-        )
-        return embed_model.get_embedding_size(embed_model.model_name)
+        return options.embed_model.get_embedding_size(options.embed_model.model_name)
 
 
 def refresh_embeddings_db(
-    requested_paths: list[Path], conn: sqlite3.Connection, options: Namespace
+    requested_paths: list[Path],
+    embedder: mdq.embed_utils.LazyEmbedder,
+    conn: sqlite3.Connection,
+    options: Namespace,
 ) -> None:
     """Update the database to reflect the current state of all requested paths.
 
@@ -149,13 +155,10 @@ def refresh_embeddings_db(
 
     # Compute new embeddings as needed
     if unique_hashes:
-        embed_model = TextEmbedding(
-            options.embed_model, cache_dir=options.cache_dir / "text_embedding"
-        )
         with Progress(console=mdq.console) as progress:
             task = progress.add_task("Embed documents", total=len(unique_hashes))
             for digest, doc in zip(unique_hashes, unique_docs, strict=True):
-                vec = next(embed_model.embed([doc])).astype(np.float32)
+                vec = embedder.embed_one(doc)
 
                 with conn:
                     conn.execute(
@@ -181,14 +184,13 @@ def refresh_embeddings_db(
 
 
 def fetch_top_matches(
-    paths: list[Path], conn: sqlite3.Connection, options: Namespace
+    paths: list[Path],
+    embedder: mdq.embed_utils.LazyEmbedder,
+    conn: sqlite3.Connection,
+    options: Namespace,
 ) -> list[str]:
     with mdq.console.status("Embedding query"):
-        embed_model = TextEmbedding(
-            options.embed_model, cache_dir=options.cache_dir / "text_embedding"
-        )
-        (query_embed,) = embed_model.embed([options.query])
-        query_embed_arr = np.array(query_embed, dtype=np.float32)
+        embedded_query = embedder.embed_one(options.query)
 
     # Populate the temporary, in-memory table which joins only the paths
     # requested to their embeddings. This can't be done as a subquery because
@@ -220,6 +222,6 @@ def fetch_top_matches(
                     AND k = ?
                 ORDER BY distance
             """,
-            [query_embed_arr, options.n_matches],
+            [embedded_query, options.n_matches],
         ).fetchall()
         return [path_str for (path_str,) in res]
