@@ -231,13 +231,6 @@ def systemd_integrate(options):
     if not Path("/run/systemd/system").exists():
         raise ValueError("Host appears not to use systemd")
 
-    cmd = ["systemctl", "is-enabled", "systemd-networkd-wait-online.service"]
-    with console.status(shlex.join(cmd)):
-        if subprocess.run(cmd).returncode != 0:
-            print(
-                "Run `systemctl enable systemd-networkd-wait-online.service` before `mdq systemd`"
-            )
-
     dest = Path.home() / ".config" / "systemd" / "user" / "mdq.service"
     with console.status(f"Creating unit file {dest}"):
         if dest.exists() and not options.force:
@@ -255,8 +248,6 @@ def systemd_integrate(options):
 dest
 [Unit]
 Description=Run dummy mdq query to populate cache
-Wants=network-online.target
-After=network-online.target
 
 [Service]
 Type=oneshot
