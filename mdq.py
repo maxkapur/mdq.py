@@ -21,102 +21,11 @@ conn_path = user_cache_path("mdq", ensure_exists=True) / "cache.db"
 embed_model = TextEmbedding("BAAI/bge-small-en-v1.5")
 
 
-def handle_query(options):
-    query_str = options.query or sys.stdin.readline()
-    options.query = query_prefix + query_str.strip()
-
-    options.extensions = set("." + e.lstrip(".") for e in options.extensions)
-
-    conn = initialize_db()
-
-    # Paths to all text files implied by command line arguments (after globbing
-    # directories)
-    all_text_file_paths = get_text_file_paths(options)
-
-    # Metadata for all text files *not* reflected in the documents table--either
-    # missing an entry for that path, or the mtime (and possibly hash) is out of
-    # date
-    updated_text_file_metadatas = get_outdated_paths(all_text_file_paths, conn)
-
-    with conn:
-        # Insert any new paths
-        conn.executemany(
-            "INSERT OR IGNORE INTO document(path, digest, mtime) VALUES (?, ?, ?)",
-            [(p.path_str, p.digest, p.mtime) for p in updated_text_file_metadatas],
-        )
-        # Update all path digests
-        conn.executemany(
-            "UPDATE document SET digest=?, mtime=? WHERE path=?",
-            [(p.digest, p.mtime, p.path_str) for p in updated_text_file_metadatas],
-        )
-
-    # Subset of previous list: Just those for which the hash is absent from our
-    # embeddings table, and thus we need to compute a new embedding
-    need_embedding_metadatas = []
-    for metadata in updated_text_file_metadatas:
-        # See if a new embedding is needed (it could have had its timestamp
-        # updated but identical content, or it could have been updated to have
-        # its contents match those of an already-embedded document)
-        if (
-            conn.execute(
-                "SELECT digest FROM embedding WHERE digest = ?", [metadata.digest]
-            ).fetchone()
-            is not None
-        ):
-            continue
-
-        need_embedding_metadatas.append(metadata)
-
-    with console.status(f"Embed {len(need_embedding_metadatas)} documents"):
-        embed_docs = [
-            metadata.path.read_text() for metadata in need_embedding_metadatas
-        ]
-        embeddings = [e.astype(np.float32) for e in embed_model.embed(embed_docs)]
-    del embed_docs
-
-    with conn:
-        conn.executemany(
-            "INSERT INTO embedding(digest, vec) VALUES (?, ?)",
-            [
-                (metadata.digest, vec)
-                for metadata, vec in zip(
-                    need_embedding_metadatas, embeddings, strict=True
-                )
-            ],
-        )
-
-    query_embed = np.array(*embed_model.embed([options.query]), dtype=np.float32)
-
-    question_marks = ",".join("?" * len(all_text_file_paths))
-    with conn:
-        conn.execute(
-            f"""
-            INSERT INTO mem.filtered(path, vec)
-                SELECT path, vec
-                FROM document
-                JOIN embedding
-                ON document.digest = embedding.digest
-                WHERE path IN ({question_marks})
-            """,
-            [str(p.absolute()) for p in all_text_file_paths],
-        )
-        results = conn.execute(
-            """
-            SELECT path
-                FROM mem.filtered
-                WHERE
-                    vec MATCH ?
-                    AND k = ?
-                ORDER BY distance
-            """,
-            [query_embed, options.n_matches],
-        ).fetchall()
-
-    for (metadata,) in results:
-        print(str(metadata))
-
-
 def main(args=None):
+    """Command line entry point.
+
+    Parse command line arguments and delegate to the appropriate handler.
+    """
     parser = ArgumentParser()
 
     # No subcommand: query documents
@@ -145,6 +54,116 @@ def main(args=None):
 
     options = parser.parse_args(args)
     options.func(options)
+
+
+def handle_query(options):
+    query_str = options.query or sys.stdin.readline()
+    options.query = query_prefix + query_str.strip()
+
+    options.extensions = set("." + e.lstrip(".") for e in options.extensions)
+
+    conn = initialize_db()
+
+    # Paths to all text files implied by command line arguments (after globbing
+    # directories)
+    all_text_file_paths = get_text_file_paths(options)
+    refresh_embeddings_db(all_text_file_paths, conn)
+
+    for (path_str,) in fetch_top_matches(
+        options.n_matches, options.query, all_text_file_paths, conn
+    ):
+        print(str(path_str))
+
+
+def refresh_embeddings_db(requested_paths, conn):
+    # Metadata for all text files *not* reflected in the documents table--either
+    # missing an entry for that path, or the mtime (and possibly hash) is out of
+    # date
+    updated_text_file_metadatas = get_outdated_paths(requested_paths, conn)
+
+    with conn:
+        # Insert any new paths
+        conn.executemany(
+            "INSERT OR IGNORE INTO document(path, digest, mtime) VALUES (?, ?, ?)",
+            [(p.path_str, p.digest, p.mtime) for p in updated_text_file_metadatas],
+        )
+        # Update all path digests
+        conn.executemany(
+            "UPDATE document SET digest=?, mtime=? WHERE path=?",
+            [(p.digest, p.mtime, p.path_str) for p in updated_text_file_metadatas],
+        )
+
+    # Subset of previous list: Just those for which the hash is absent from our
+    # embeddings table, and thus we need to compute a new embedding
+    need_embedding_metadatas = []
+    for path_str in updated_text_file_metadatas:
+        # See if a new embedding is needed (it could have had its timestamp
+        # updated but identical content, or it could have been updated to have
+        # its contents match those of an already-embedded document)
+        if (
+            conn.execute(
+                "SELECT digest FROM embedding WHERE digest = ?", [path_str.digest]
+            ).fetchone()
+            is not None
+        ):
+            continue
+
+        need_embedding_metadatas.append(path_str)
+
+    with console.status(f"Embed {len(need_embedding_metadatas)} documents"):
+        embed_docs = [
+            metadata.path.read_text() for metadata in need_embedding_metadatas
+        ]
+        embeddings = [e.astype(np.float32) for e in embed_model.embed(embed_docs)]
+    del embed_docs
+
+    with conn:
+        conn.executemany(
+            "INSERT INTO embedding(digest, vec) VALUES (?, ?)",
+            [
+                (metadata.digest, vec)
+                for metadata, vec in zip(
+                    need_embedding_metadatas, embeddings, strict=True
+                )
+            ],
+        )
+
+
+def fetch_top_matches(paths, conn, options):
+    query_embed = np.array(*embed_model.embed([options.query]), dtype=np.float32)
+
+    # Populate the temporary, in-memory table which joins only the paths
+    # requested to their embeddings. This can't be done as a subquery because
+    # sqlite-vec's indexing algorithm needs to rank the top k relative to an
+    # entire column of embeddings. (For example, if you try to just join
+    # document and embedding and select the top k with a WHERE statement on
+    # document.path, the top k are selected *before* applying the WHERE
+    # statement and you get fewer than k matches.)
+    question_marks = ",".join("?" * len(paths))
+    with conn:
+        conn.execute(
+            f"""
+            INSERT INTO mem.filtered(path, vec)
+                SELECT path, vec
+                FROM document
+                JOIN embedding
+                ON document.digest = embedding.digest
+                WHERE path IN ({question_marks})
+            """,
+            [str(p.absolute()) for p in paths],
+        )
+
+    return conn.execute(
+        """
+        SELECT path
+            FROM mem.filtered
+            WHERE
+                vec MATCH ?
+                AND k = ?
+            ORDER BY distance
+        """,
+        [query_embed, options.n_matches],
+    ).fetchall()
 
 
 def initialize_db():
