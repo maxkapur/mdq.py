@@ -37,7 +37,7 @@ Repository = "https://github.com/maxkapur/mdq.py.git"
 "Bug Tracker" = "https://github.com/maxkapur/mdq.py/issues"
 
 [project.scripts]
-mdq = "mdq:main"
+mdq = "mdq.__main__:main"
 
 [tool.mypy]
 modules = ["mdq"]
