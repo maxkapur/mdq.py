@@ -58,11 +58,7 @@ def initialize_db(options: Namespace) -> sqlite3.Connection:
             )
         """)
 
-        # TODO: See if we can avoid instantiating the model here if table already exists
-        embed_model = TextEmbedding(
-            options.embed_model, cache_dir=options.cache_dir / "text_embedding"
-        )
-        embedding_size = embed_model.get_embedding_size(embed_model.model_name)
+        embedding_size = get_embedding_size(conn, options)
 
         conn.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS embedding USING vec0(
@@ -81,6 +77,27 @@ def initialize_db(options: Namespace) -> sqlite3.Connection:
         """)
 
     return conn
+
+
+def get_embedding_size(conn: sqlite3.Connection, options: Namespace) -> int:
+    """Efficiently determine the embedding size.
+
+    Try to determine the embedding size by looking at a row of the embedding
+    table. If that fails, then actually load the embedding model and check the
+    size.
+    """
+    try:
+        (size,) = conn.execute("SELECT vec_length(vec) FROM embedding").fetchone()
+        return size
+
+    except (
+        sqlite3.OperationalError,  # table doesn't exist
+        TypeError,  # table exists but has no rows
+    ):
+        embed_model = TextEmbedding(
+            options.embed_model, cache_dir=options.cache_dir / "text_embedding"
+        )
+        return embed_model.get_embedding_size(embed_model.model_name)
 
 
 def refresh_embeddings_db(
