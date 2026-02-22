@@ -44,26 +44,18 @@ def initialize_db(options: Namespace) -> sqlite3.Connection:
     Load the sqlite-vec extension. Create files and tables as needed.
     """
     conn = sqlite3.connect(str(options.cache_dir / "cache.db"))
+    conn.execute("PRAGMA strict = ON")
 
     conn.enable_load_extension(True)
     sqlite_vec.load(conn)
     conn.enable_load_extension(False)
 
     with conn:
-        conn.execute("PRAGMA strict = ON")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS document(
-                path TEXT UNIQUE,
-                digest TEXT,
-                mtime FLOAT
-            )
-        """)
-
         embedding_size = get_embedding_size(conn, options)
 
         conn.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS embedding USING vec0(
-                digest TEXT UNIQUE,
+                digest TEXT PRIMARY KEY,
                 vec FLOAT[{embedding_size}]
             )
         """)
@@ -72,8 +64,17 @@ def initialize_db(options: Namespace) -> sqlite3.Connection:
         conn.execute("ATTACH DATABASE ':memory:' AS mem")
         conn.execute(f"""
             CREATE VIRTUAL TABLE mem.filtered USING vec0(
-                path TEXT UNIQUE,
+                path TEXT PRIMARY KEY,
                 vec FLOAT[{embedding_size}]
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS document(
+                path TEXT PRIMARY KEY,
+                digest TEXT,
+                mtime FLOAT,
+                FOREIGN KEY(digest) REFERENCES embedding(digest)
             )
         """)
 
