@@ -88,22 +88,34 @@ def handle_query(options):
     query_embed = np.array(*embed_model.embed([options.query]), dtype=np.float32)
 
     question_marks = ",".join("?" * len(all_text_file_paths))
-    results = conn.execute(
-        f"""
-        SELECT path
-            FROM document
-            JOIN embedding
-            ON document.digest = embedding.digest
-            WHERE
-                document.path IN ({question_marks})
-                AND embedding.vec MATCH ?
-                AND k = 1000
-            ORDER BY distance
-            LIMIT ?
-        """,
-        [str(p.absolute()) for p in all_text_file_paths]
-        + [query_embed, options.n_matches],
-    ).fetchall()
+    with conn:
+        conn.execute("DELETE FROM filtered")
+        conn.execute(
+            f"""
+            INSERT INTO filtered(path, vec)
+                SELECT path, vec
+                FROM document
+                JOIN embedding
+                ON document.digest = embedding.digest
+                WHERE path IN ({question_marks})
+            """,
+            [str(p.absolute()) for p in all_text_file_paths],
+        )
+
+        results = conn.execute(
+            """
+            SELECT path
+                FROM filtered
+                WHERE
+                    vec MATCH ?
+                    AND k = ?
+                ORDER BY distance
+            """,
+            [query_embed, options.n_matches],
+        ).fetchall()
+
+        conn.execute("DELETE FROM filtered")
+
     for (metadata,) in results:
         print(str(metadata))
 
@@ -161,6 +173,14 @@ def initialize_db():
         conn.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS embedding USING vec0(
                 digest TEXT UNIQUE,
+                vec FLOAT[{embedding_size}]
+            )
+        """)
+
+        # Swap space to hold embeddings for just the paths requested
+        conn.execute(f"""
+            CREATE VIRTUAL TABLE IF NOT EXISTS filtered USING vec0(
+                path TEXT UNIQUE,
                 vec FLOAT[{embedding_size}]
             )
         """)
