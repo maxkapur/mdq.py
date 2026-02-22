@@ -97,8 +97,9 @@ def handle_query(options):
             WHERE
                 document.path IN ({question_marks})
                 AND embedding.vec MATCH ?
-                AND k = ?
+                AND k = 1000
             ORDER BY distance
+            LIMIT ?
         """,
         [str(p.absolute()) for p in all_text_file_paths]
         + [query_embed, options.n_matches],
