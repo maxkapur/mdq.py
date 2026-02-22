@@ -1,10 +1,12 @@
+from typing import Any
+
 import numpy as np
 from fastembed import TextEmbedding
 from numpy.typing import NDArray
 
 
 class LazyEmbedder:
-    def __init__(self, text_embedding_kwargs: dict[str, any]) -> None:
+    def __init__(self, text_embedding_kwargs: dict[str, Any]) -> None:
         self.text_embedding_kwargs = text_embedding_kwargs
 
     @property
