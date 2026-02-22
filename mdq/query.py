@@ -120,22 +120,26 @@ def refresh_embeddings_db(
 
             need_embedding_metadatas.append(metadata)
 
-        with mdq.console.status(f"Embed {len(need_embedding_metadatas)} documents"):
-            embed_docs = [
-                metadata.path.read_text() for metadata in need_embedding_metadatas
-            ]
-            embeddings = [
-                e.astype(np.float32) for e in mdq.embed_model.embed(embed_docs)
+        # Subset for unique hashes in case duplicates exist among the new docs
+        unique_hashes = []
+        unique_docs = []
+        seen_hashes = set()
+        for metadata in need_embedding_metadatas:
+            if metadata.digest in seen_hashes:
+                continue
+
+            seen_hashes.add(metadata.digest)
+            unique_hashes.append(metadata.digest)
+            unique_docs.append(metadata.path.read_text())
+
+        with mdq.console.status(f"Embed {len(unique_docs)} documents"):
+            unique_embeddings = [
+                e.astype(np.float32) for e in mdq.embed_model.embed(unique_docs)
             ]
 
         conn.executemany(
             "INSERT INTO embedding(digest, vec) VALUES (?, ?)",
-            [
-                (metadata.digest, vec)
-                for metadata, vec in zip(
-                    need_embedding_metadatas, embeddings, strict=True
-                )
-            ],
+            list(zip(unique_hashes, unique_embeddings, strict=True)),
         )
 
 
