@@ -133,42 +133,46 @@ def refresh_embeddings_db(
             [(p.digest, p.mtime, p.path_str) for p in updated_text_file_metadatas],
         )
 
-        # Subset of previous list: Just those for which the hash is absent from
-        # our embeddings table, and thus we need to compute a new embedding
-        need_embedding_metadatas = []
-        for metadata in updated_text_file_metadatas:
-            # See if a new embedding is needed (it could have had its timestamp
-            # updated but identical content, or it could have been updated to
-            # have its contents match those of an already-embedded document)
-            if (
-                conn.execute(
-                    "SELECT digest FROM embedding WHERE digest = ?", [metadata.digest]
-                ).fetchone()
-                is not None
-            ):
-                continue
-
-            need_embedding_metadatas.append(metadata)
-
-        # Subset for unique hashes in case duplicates exist among the new docs
-        unique_hashes = []
-        unique_docs = []
-        seen_hashes = set()
-        for metadata in need_embedding_metadatas:
-            if metadata.digest in seen_hashes:
-                continue
-
-            seen_hashes.add(metadata.digest)
-            unique_hashes.append(metadata.digest)
-            unique_docs.append(metadata.path.read_text())
-
-        embed_model = TextEmbedding(
-            options.embed_model, cache_dir=options.cache_dir / "text_embedding"
-        )
-        for digest, doc in progress.track(
-            zip(unique_hashes, unique_docs, strict=True), "Embed documents"
+    # Subset of previous list: Just those for which the hash is absent from
+    # our embeddings table, and thus we need to compute a new embedding
+    need_embedding_metadatas = []
+    for metadata in updated_text_file_metadatas:
+        # See if a new embedding is needed (it could have had its timestamp
+        # updated but identical content, or it could have been updated to
+        # have its contents match those of an already-embedded document)
+        if (
+            conn.execute(
+                "SELECT digest FROM embedding WHERE digest = ?", [metadata.digest]
+            ).fetchone()
+            is not None
         ):
-            vec = next(embed_model.embed([doc])).astype(np.float32)
+            continue
+
+        need_embedding_metadatas.append(metadata)
+
+    # Subset for unique hashes in case duplicates exist among the new docs
+    unique_hashes = []
+    unique_docs = []
+    seen_hashes = set()
+    for metadata in need_embedding_metadatas:
+        if metadata.digest in seen_hashes:
+            continue
+
+        seen_hashes.add(metadata.digest)
+        unique_hashes.append(metadata.digest)
+        unique_docs.append(metadata.path.read_text())
+
+    embed_model = TextEmbedding(
+        options.embed_model, cache_dir=options.cache_dir / "text_embedding"
+    )
+    for digest, doc in progress.track(
+        zip(unique_hashes, unique_docs, strict=True),
+        "Embed documents",
+        total=len(unique_hashes),
+    ):
+        vec = next(embed_model.embed([doc])).astype(np.float32)
+
+        with conn:
             conn.execute(
                 "INSERT INTO embedding(digest, vec) VALUES (?, ?)", (digest, vec)
             )
