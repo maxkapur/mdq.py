@@ -25,6 +25,9 @@ def main(args: None | list[str] = None) -> None:
         "-e", "--extensions", nargs="*", default=["md", "markdown", "txt"]
     )
     parser.add_argument("-k", "-n", "--n-matches", default=4, type=int)
+    parser.add_argument("--cache-dir", default=None, type=Path)
+    parser.add_argument("--embed-model", default="BAAI/bge-small-en-v1.5", type=str)
+    parser.add_argument("--query-prefix", default="query: ", type=str)
     parser.set_defaults(func=mdq.query.handle)
 
     # systemd subcommand

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import numpy as np
 import sqlite_vec
+from fastembed import TextEmbedding
+from platformdirs import user_cache_path
 
 import mdq
 import mdq.file_utils
@@ -12,29 +14,35 @@ import mdq.file_utils
 
 def handle(options: Namespace) -> None:
     """Handle parsed command line options for query mode (no subcommand)."""
-    query_str = options.query or sys.stdin.readline()
-    options.query = mdq.query_prefix + query_str.strip()
+
+    # Apply dynamic default arguments
+    if options.query:
+        options.query = options.query_prefix + options.query.strip()
+    else:
+        options.query = options.query_prefix + sys.stdin.readline()
+
+    if options.cache_dir is None:
+        options.cache_dir = user_cache_path("mdq", ensure_exists=True)
 
     options.extensions = set("." + e.lstrip(".") for e in options.extensions)
 
-    conn = initialize_db()
+    conn = initialize_db(options)
 
     # Paths to all text files implied by command line arguments (after globbing
     # directories)
     all_text_file_paths = mdq.file_utils.get_text_file_paths(options)
-    refresh_embeddings_db(all_text_file_paths, conn)
+    refresh_embeddings_db(all_text_file_paths, conn, options)
 
     for path_str in fetch_top_matches(all_text_file_paths, conn, options):
         print(str(path_str))
 
 
-def initialize_db() -> sqlite3.Connection:
+def initialize_db(options: Namespace) -> sqlite3.Connection:
     """Get a connection to the sqlite database.
 
     Load the sqlite-vec extension. Create files and tables as needed.
     """
-
-    conn = sqlite3.connect(str(mdq.conn_path))
+    conn = sqlite3.connect(str(options.cache_dir / "cache.db"))
 
     conn.enable_load_extension(True)
     sqlite_vec.load(conn)
@@ -50,7 +58,11 @@ def initialize_db() -> sqlite3.Connection:
             )
         """)
 
-        embedding_size = mdq.embed_model.get_embedding_size(mdq.embed_model.model_name)
+        # TODO: See if we can avoid instantiating the model here if table already exists
+        embed_model = TextEmbedding(
+            options.embed_model, cache_dir=options.cache_dir / "text_embedding"
+        )
+        embedding_size = embed_model.get_embedding_size(embed_model.model_name)
 
         conn.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS embedding USING vec0(
@@ -72,7 +84,7 @@ def initialize_db() -> sqlite3.Connection:
 
 
 def refresh_embeddings_db(
-    requested_paths: list[Path], conn: sqlite3.Connection
+    requested_paths: list[Path], conn: sqlite3.Connection, options: Namespace
 ) -> None:
     """Update the database to reflect the current state of all requested paths.
 
@@ -133,8 +145,11 @@ def refresh_embeddings_db(
             unique_docs.append(metadata.path.read_text())
 
         with mdq.console.status(f"Embed {len(unique_docs)} documents"):
+            embed_model = TextEmbedding(
+                options.embed_model, cache_dir=options.cache_dir / "text_embedding"
+            )
             unique_embeddings = [
-                e.astype(np.float32) for e in mdq.embed_model.embed(unique_docs)
+                e.astype(np.float32) for e in embed_model.embed(unique_docs)
             ]
 
         conn.executemany(
@@ -147,7 +162,10 @@ def fetch_top_matches(
     paths: list[Path], conn: sqlite3.Connection, options: Namespace
 ) -> list[str]:
     with mdq.console.status("Embedding query"):
-        (query_embed,) = mdq.embed_model.embed([options.query])
+        embed_model = TextEmbedding(
+            options.embed_model, cache_dir=options.cache_dir / "text_embedding"
+        )
+        (query_embed,) = embed_model.embed([options.query])
         query_embed_arr = np.array(query_embed, dtype=np.float32)
 
     # Populate the temporary, in-memory table which joins only the paths
