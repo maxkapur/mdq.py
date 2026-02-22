@@ -7,6 +7,7 @@ import numpy as np
 import sqlite_vec
 from fastembed import TextEmbedding
 from platformdirs import user_cache_path
+from rich import progress
 
 import mdq
 import mdq.file_utils
@@ -161,18 +162,16 @@ def refresh_embeddings_db(
             unique_hashes.append(metadata.digest)
             unique_docs.append(metadata.path.read_text())
 
-        with mdq.console.status(f"Embed {len(unique_docs)} documents"):
-            embed_model = TextEmbedding(
-                options.embed_model, cache_dir=options.cache_dir / "text_embedding"
-            )
-            unique_embeddings = [
-                e.astype(np.float32) for e in embed_model.embed(unique_docs)
-            ]
-
-        conn.executemany(
-            "INSERT INTO embedding(digest, vec) VALUES (?, ?)",
-            list(zip(unique_hashes, unique_embeddings, strict=True)),
+        embed_model = TextEmbedding(
+            options.embed_model, cache_dir=options.cache_dir / "text_embedding"
         )
+        for digest, doc in progress.track(
+            zip(unique_hashes, unique_docs, strict=True), "Embed documents"
+        ):
+            vec = next(embed_model.embed([doc])).astype(np.float32)
+            conn.execute(
+                "INSERT INTO embedding(digest, vec) VALUES (?, ?)", (digest, vec)
+            )
 
 
 def fetch_top_matches(
