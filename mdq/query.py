@@ -103,22 +103,22 @@ def refresh_embeddings_db(
             [(p.digest, p.mtime, p.path_str) for p in updated_text_file_metadatas],
         )
 
-        # Subset of previous list: Just those for which the hash is absent from our
-        # embeddings table, and thus we need to compute a new embedding
+        # Subset of previous list: Just those for which the hash is absent from
+        # our embeddings table, and thus we need to compute a new embedding
         need_embedding_metadatas = []
-        for path_str in updated_text_file_metadatas:
+        for metadata in updated_text_file_metadatas:
             # See if a new embedding is needed (it could have had its timestamp
-            # updated but identical content, or it could have been updated to have
-            # its contents match those of an already-embedded document)
+            # updated but identical content, or it could have been updated to
+            # have its contents match those of an already-embedded document)
             if (
                 conn.execute(
-                    "SELECT digest FROM embedding WHERE digest = ?", [path_str.digest]
+                    "SELECT digest FROM embedding WHERE digest = ?", [metadata.digest]
                 ).fetchone()
                 is not None
             ):
                 continue
 
-            need_embedding_metadatas.append(path_str)
+            need_embedding_metadatas.append(metadata)
 
         with mdq.console.status(f"Embed {len(need_embedding_metadatas)} documents"):
             embed_docs = [
