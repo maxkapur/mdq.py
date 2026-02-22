@@ -89,10 +89,9 @@ def handle_query(options):
 
     question_marks = ",".join("?" * len(all_text_file_paths))
     with conn:
-        conn.execute("DELETE FROM filtered")
         conn.execute(
             f"""
-            INSERT INTO filtered(path, vec)
+            INSERT INTO mem.filtered(path, vec)
                 SELECT path, vec
                 FROM document
                 JOIN embedding
@@ -101,11 +100,10 @@ def handle_query(options):
             """,
             [str(p.absolute()) for p in all_text_file_paths],
         )
-
         results = conn.execute(
             """
             SELECT path
-                FROM filtered
+                FROM mem.filtered
                 WHERE
                     vec MATCH ?
                     AND k = ?
@@ -113,8 +111,6 @@ def handle_query(options):
             """,
             [query_embed, options.n_matches],
         ).fetchall()
-
-        conn.execute("DELETE FROM filtered")
 
     for (metadata,) in results:
         print(str(metadata))
@@ -177,9 +173,10 @@ def initialize_db():
             )
         """)
 
-        # Swap space to hold embeddings for just the paths requested
+        # Temp space to hold embeddings for just the paths requested
+        conn.execute("ATTACH DATABASE ':memory:' AS mem")
         conn.execute(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS filtered USING vec0(
+            CREATE VIRTUAL TABLE mem.filtered USING vec0(
                 path TEXT UNIQUE,
                 vec FLOAT[{embedding_size}]
             )
