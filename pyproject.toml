@@ -37,6 +37,12 @@ dev = [
   "mypy",
   "pytest",
   "ruff",
+  "types-pexpect",
+  "types-pygments",
+  "types-pysocks",
+  "types-pyyaml",
+  "types-simplejson",
+  "types-tqdm",
   "uv",
 ]
 
@@ -45,6 +51,10 @@ files = ["."]
 
 [[tool.mypy.overrides]]
 module = ["sqlite_vec"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["onnxruntime"]
 ignore_missing_imports = true
 
 [tool.ruff.lint]
