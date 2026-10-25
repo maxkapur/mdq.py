@@ -34,7 +34,8 @@ def mock_directory(tmp_path_factory):
 
 
 # Integration tests of the examples from the README. Run tests twice to detect
-# cache invalidation issues.
+# cache invalidation issues. NOTE: These tests expect a specific ordering of
+# results and thus may change if the default model is changed or updated.
 
 
 @pytest.mark.parametrize("rep", range(2))
@@ -48,8 +49,8 @@ def test_basic(mock_directory, rep):
         """\
 .*/notes/sasquatch.md
 .*/docs/satron.md
-.*/docs/village.txt
 .*/notes/more notes/senarathne.txt
+.*/docs/village.txt
 """,
         res.stdout,
     )
@@ -71,8 +72,8 @@ def test_stdin(mock_directory, rep):
         """\
 .*/notes/sasquatch.md
 .*/docs/satron.md
-.*/docs/village.txt
 .*/notes/more notes/senarathne.txt
+.*/docs/village.txt
 """,
         res.stdout,
     )
@@ -110,8 +111,8 @@ def test_exts(mock_directory, rep):
 
     assert re.match(
         """\
-.*/docs/village.txt
 .*/notes/more notes/senarathne.txt
+.*/docs/village.txt
 """,
         res.stdout,
     )
