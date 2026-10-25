@@ -1,4 +1,3 @@
-import base64
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -78,9 +77,9 @@ def main(args: None | list[str] = None) -> None:
 
     options = parser.parse_args(args)
 
-    # Use this as identifier in tables since IDK what strings are allowed as
-    # model identifiers
-    options.model_name_b64 = base64.b64encode(options.model_name.encode()).decode()
+    # I don't think quotes are allowed in Huggingface identifiers anyway but
+    # escape them just in case to get a safe SQLite identifier
+    options.model_name_safe = options.model_name.replace('"', '""')
     options.func(options)
 
 

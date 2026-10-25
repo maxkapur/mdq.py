@@ -59,8 +59,12 @@ def initialize_db(options: Namespace) -> sqlite3.Connection:
 
     embedding_size = TextEmbedding.get_embedding_size(options.model_name)
     with conn:
+        # NOTE: Different table for each embedding model (rather than recording
+        # model name in a column) because models have different embedding
+        # dimensions. TODO: Test the assumption that these actually have to be
+        # distinct tables.
         conn.execute(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS "embedding.{options.model_name_b64}" USING vec0(
+            CREATE VIRTUAL TABLE IF NOT EXISTS "embedding.{options.model_name_safe}" USING vec0(
                 digest TEXT PRIMARY KEY,
                 vec FLOAT[{embedding_size}]
             )
@@ -114,7 +118,7 @@ def refresh_embeddings_db(
         # have its contents match those of an already-embedded document)
         if (
             conn.execute(
-                f'SELECT digest FROM "embedding.{options.model_name_b64}" WHERE digest = ?',
+                f'SELECT digest FROM "embedding.{options.model_name_safe}" WHERE digest = ?',
                 (metadata.digest,),
             ).fetchone()
             is not None
@@ -144,7 +148,7 @@ def refresh_embeddings_db(
 
                 with conn:
                     conn.execute(
-                        f'INSERT INTO "embedding.{options.model_name_b64}"(digest, vec) VALUES (?, ?)',
+                        f'INSERT INTO "embedding.{options.model_name_safe}"(digest, vec) VALUES (?, ?)',
                         (digest, vec),
                     )
                 progress.advance(task)
@@ -188,8 +192,8 @@ def fetch_top_matches(
             INSERT INTO mem.filtered(path, vec)
                 SELECT path, vec
                 FROM document
-                JOIN "embedding.{options.model_name_b64}"
-                ON document.digest = "embedding.{options.model_name_b64}".digest
+                JOIN "embedding.{options.model_name_safe}"
+                ON document.digest = "embedding.{options.model_name_safe}".digest
                 WHERE path IN ({question_marks})
             """,
             [str(p.absolute()) for p in paths],
