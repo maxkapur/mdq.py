@@ -51,7 +51,7 @@ def main(args: None | list[str] = None) -> None:
     )
     parser.add_argument(
         "--model-name",
-        default="BAAI/bge-small-en-v1.5",
+        default="Qwen/Qwen3-Embedding-0.6B",
         type=str,
         help="Name of fastembed embedding model",
     )
