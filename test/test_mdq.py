@@ -40,7 +40,9 @@ def mock_directory(tmp_path_factory):
 @pytest.mark.parametrize("rep", range(2))
 def test_basic(mock_directory, rep):
     cmd = ["mdq", "-q", "sasquatch"]
-    res = subprocess.run(cmd, cwd=mock_directory, text=True, capture_output=True)
+    res = subprocess.run(
+        cmd, cwd=mock_directory, text=True, capture_output=True, check=True
+    )
 
     assert re.match(
         """\
@@ -57,7 +59,12 @@ def test_basic(mock_directory, rep):
 def test_stdin(mock_directory, rep):
     cmd = ["mdq"]
     res = subprocess.run(
-        cmd, cwd=mock_directory, text=True, capture_output=True, input="sasquatch"
+        cmd,
+        cwd=mock_directory,
+        text=True,
+        capture_output=True,
+        input="sasquatch",
+        check=True,
     )
 
     assert re.match(
@@ -81,7 +88,9 @@ def test_globs(mock_directory, rep):
         *mock_directory.glob("./notes/*.md"),
         *mock_directory.glob("./docs/*.md"),
     ]
-    res = subprocess.run(cmd, cwd=mock_directory, text=True, capture_output=True)
+    res = subprocess.run(
+        cmd, cwd=mock_directory, text=True, capture_output=True, check=True
+    )
 
     assert re.match(
         """\
@@ -95,7 +104,9 @@ def test_globs(mock_directory, rep):
 @pytest.mark.parametrize("rep", range(2))
 def test_exts(mock_directory, rep):
     cmd = ["mdq", "-q", "sasquatch", "-e", "txt", "tex", "-p", mock_directory]
-    res = subprocess.run(cmd, cwd=mock_directory, text=True, capture_output=True)
+    res = subprocess.run(
+        cmd, cwd=mock_directory, text=True, capture_output=True, check=True
+    )
 
     assert re.match(
         """\
@@ -109,7 +120,9 @@ def test_exts(mock_directory, rep):
 @pytest.mark.parametrize("rep", range(2))
 def test_n_matches(mock_directory, rep):
     cmd = ["mdq", "-q", "sasquatch", "-k", "2"]
-    res = subprocess.run(cmd, cwd=mock_directory, text=True, capture_output=True)
+    res = subprocess.run(
+        cmd, cwd=mock_directory, text=True, capture_output=True, check=True
+    )
 
     assert re.match(
         """\

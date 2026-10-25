@@ -43,8 +43,8 @@ WantedBy=default.target
 
     cmd = ["systemctl", "--user", "daemon-reload"]
     with mdq.console.status(shlex.join(cmd)):
-        subprocess.run(cmd).check_returncode()
+        subprocess.run(cmd, check=True)
 
     cmd = ["systemctl", "--user", "enable", "--now", "mdq"]
     with mdq.console.status(shlex.join(cmd)):
-        subprocess.run(cmd).check_returncode()
+        subprocess.run(cmd, check=True)

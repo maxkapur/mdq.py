@@ -15,7 +15,5 @@ def test_mypy():
 
 
 def test_ruff():
-    subprocess.run(
-        [sys.executable, "-m", "ruff", "format", "--check"]
-    ).check_returncode()
-    subprocess.run([sys.executable, "-m", "ruff", "check"]).check_returncode()
+    subprocess.run([sys.executable, "-m", "ruff", "format", "--check"], check=True)
+    subprocess.run([sys.executable, "-m", "ruff", "check"], check=True)

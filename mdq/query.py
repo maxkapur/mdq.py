@@ -25,7 +25,7 @@ def handle(options: Namespace) -> None:
     if options.cache_dir is None:
         options.cache_dir = user_cache_path("mdq", ensure_exists=True)
 
-    options.extensions = set("." + e.lstrip(".") for e in options.extensions)
+    options.extensions = {"." + e.lstrip(".") for e in options.extensions}
     embedder = mdq.embed_utils.LazyEmbedder(
         {
             "model_name": options.model_name,
