@@ -23,13 +23,6 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICEN[CS]E.*"]
 
-[project.optional-dependencies]
-dev = [
-  "mypy",
-  "pytest",
-  "ruff",
-]
-
 [project.urls]
 Homepage = "https://github.com/maxkapur/mdq.py"
 Documentation = "https://github.com/maxkapur/mdq.py"
@@ -38,6 +31,14 @@ Repository = "https://github.com/maxkapur/mdq.py.git"
 
 [project.scripts]
 mdq = "mdq.__main__:main"
+
+[dependency-groups]
+dev = [
+  "mypy",
+  "pytest",
+  "ruff",
+  "uv",
+]
 
 [tool.mypy]
 files = ["."]
