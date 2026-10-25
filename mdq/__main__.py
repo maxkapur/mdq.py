@@ -80,7 +80,7 @@ def main(args: None | list[str] = None) -> None:
 
     # Use this as identifier in tables since IDK what strings are allowed as
     # model identifiers
-    options.model_name_b64 = base64.b64encode(options.model_name.encode())
+    options.model_name_b64 = base64.b64encode(options.model_name.encode()).decode()
     options.func(options)
 
 
