@@ -33,7 +33,7 @@ Description=Run dummy mdq query to populate cache
 
 [Service]
 Type=oneshot
-WorkingDirectory={str(Path().absolute())}
+WorkingDirectory={Path().absolute()!s}
 ExecStart={exec_cmd}
 
 [Install]
