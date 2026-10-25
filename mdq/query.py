@@ -60,7 +60,7 @@ def initialize_db(options: Namespace) -> sqlite3.Connection:
     embedding_size = TextEmbedding.get_embedding_size(options.model_name)
     with conn:
         conn.execute(f"""
-            CREATE VIRTUAL TABLE IF NOT EXISTS embedding USING vec0(
+            CREATE VIRTUAL TABLE IF NOT EXISTS "embedding.{options.model_name_b64}" USING vec0(
                 digest TEXT PRIMARY KEY,
                 vec FLOAT[{embedding_size}]
             )
@@ -79,8 +79,7 @@ def initialize_db(options: Namespace) -> sqlite3.Connection:
             CREATE TABLE IF NOT EXISTS document(
                 path TEXT PRIMARY KEY,
                 digest TEXT,
-                mtime FLOAT,
-                FOREIGN KEY(digest) REFERENCES embedding(digest)
+                mtime FLOAT
             )
         """)
 
@@ -115,7 +114,8 @@ def refresh_embeddings_db(
         # have its contents match those of an already-embedded document)
         if (
             conn.execute(
-                "SELECT digest FROM embedding WHERE digest = ?", [metadata.digest]
+                f'SELECT digest FROM "embedding.{options.model_name_b64}" WHERE digest = ?',
+                (metadata.digest,),
             ).fetchone()
             is not None
         ):
@@ -144,7 +144,7 @@ def refresh_embeddings_db(
 
                 with conn:
                     conn.execute(
-                        "INSERT INTO embedding(digest, vec) VALUES (?, ?)",
+                        f'INSERT INTO "embedding.{options.model_name_b64}"(digest, vec) VALUES (?, ?)',
                         (digest, vec),
                     )
                 progress.advance(task)
@@ -188,8 +188,8 @@ def fetch_top_matches(
             INSERT INTO mem.filtered(path, vec)
                 SELECT path, vec
                 FROM document
-                JOIN embedding
-                ON document.digest = embedding.digest
+                JOIN "embedding.{options.model_name_b64}"
+                ON document.digest = "embedding.{options.model_name_b64}".digest
                 WHERE path IN ({question_marks})
             """,
             [str(p.absolute()) for p in paths],

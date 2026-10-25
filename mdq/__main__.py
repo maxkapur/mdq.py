@@ -1,3 +1,4 @@
+import base64
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -76,6 +77,10 @@ def main(args: None | list[str] = None) -> None:
     systemd_parser.set_defaults(func=mdq.systemd.handle)
 
     options = parser.parse_args(args)
+
+    # Use this as identifier in tables since IDK what strings are allowed as
+    # model identifiers
+    options.model_name_b64 = base64.b64encode(options.model_name.encode())
     options.func(options)
 
 
