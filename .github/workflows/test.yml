@@ -4,22 +4,8 @@ on: [push]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.13", "3.14"]
-
+    container: ghcr.io/astral-sh/uv:debian
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install module
-        run: pip install --editable .[dev]
-
-      - name: Run tests
-        run: pytest
+      - run: uv run pytest
