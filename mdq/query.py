@@ -61,8 +61,7 @@ def initialize_db(options: Namespace) -> sqlite3.Connection:
     with conn:
         # NOTE: Different table for each embedding model (rather than recording
         # model name in a column) because models have different embedding
-        # dimensions. TODO: Test the assumption that these actually have to be
-        # distinct tables.
+        # dimensions
         conn.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS "embedding.{options.model_name_safe}" USING vec0(
                 digest TEXT PRIMARY KEY,
