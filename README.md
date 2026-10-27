@@ -1,5 +1,9 @@
 # mdq.py
 
+<a href="https://www.hannahilea.com/blog/houseplant-programming">
+  <img alt="Static Badge" src="https://img.shields.io/badge/%F0%9F%AA%B4%20Houseplant%20-x?style=flat&amp;label=Project%20type&amp;color=1E1E1D">
+</a>
+
 A command-line tool for semantic search on plaintext files using local LLM
 langauge embeddings. Uses [fastembed](https://qdrant.github.io/fastembed/) with
 a SQLite cache.
