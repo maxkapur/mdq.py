@@ -45,5 +45,5 @@ mdq systemd
 Clone the repo, then run:
 
 ```shell
-pipx install .
+pipx install . --backend uv
 ```
